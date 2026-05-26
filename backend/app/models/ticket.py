@@ -23,6 +23,11 @@ class Ticket(db.Model):
     ai_summary = db.Column(db.Text, nullable=True)
     ai_solution = db.Column(db.Text, nullable=True)
 
+    # Escalation Risk Predictor fields
+    escalation_score = db.Column(db.Integer, nullable=True)
+    escalation_level = db.Column(db.String(50), nullable=True)
+    escalation_reason = db.Column(db.Text, nullable=True)
+
     # Relationships
     comments = db.relationship('TicketComment', backref='ticket', lazy=True, cascade='all, delete-orphan')
 
@@ -41,5 +46,8 @@ class Ticket(db.Model):
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'sla_deadline': self.sla_deadline.isoformat() if self.sla_deadline else None,
             'ai_summary': self.ai_summary,
-            'ai_solution': self.ai_solution
+            'ai_solution': self.ai_solution,
+            'escalation_score': self.escalation_score,
+            'escalation_level': self.escalation_level,
+            'escalation_reason': self.escalation_reason
         }

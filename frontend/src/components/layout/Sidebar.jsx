@@ -7,7 +7,8 @@ import {
     PlusCircle, 
     MessageSquare, 
     ShieldAlert, 
-    LogOut
+    LogOut,
+    BookOpen
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -18,6 +19,7 @@ const Sidebar = () => {
     let navItems = [
         { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/tickets', label: 'Tickets', icon: Ticket },
+        { path: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
     ];
 
     if (user?.role === 'admin') {

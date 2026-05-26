@@ -12,6 +12,8 @@ import TicketDetails from './pages/TicketDetails';
 import CreateTicket from './pages/CreateTicket';
 import AdminPanel from './pages/AdminPanel';
 import Chatbot from './pages/Chatbot';
+import KnowledgeBase from './pages/KnowledgeBase';
+import KnowledgeArticleDetails from './pages/KnowledgeArticleDetails';
 
 // Layout
 import Layout from './components/layout/Layout';
@@ -39,6 +41,8 @@ const AppRoutes = () => {
                 <Route path="tickets/:id" element={<TicketDetails />} />
                 <Route path="tickets/new" element={<CreateTicket />} />
                 <Route path="chat" element={<Chatbot />} />
+                <Route path="knowledge-base" element={<KnowledgeBase />} />
+                <Route path="knowledge-base/:id" element={<KnowledgeArticleDetails />} />
                 
                 {/* Admin Only */}
                 <Route path="admin" element={<ProtectedRoute requireAdmin={true}><AdminPanel /></ProtectedRoute>} />

@@ -11,6 +11,21 @@ def init_db():
         # Create all tables
         db.create_all()
 
+        # Check and migrate tickets columns if needed
+        from sqlalchemy import inspect
+        try:
+            inspector = inspect(db.engine)
+            columns = [col['name'] for col in inspector.get_columns('tickets')]
+            if 'escalation_score' not in columns:
+                print("Migration: Adding escalation columns to tickets table...")
+                with db.engine.begin() as conn:
+                    conn.execute(db.text("ALTER TABLE tickets ADD COLUMN escalation_score INT NULL"))
+                    conn.execute(db.text("ALTER TABLE tickets ADD COLUMN escalation_level VARCHAR(50) NULL"))
+                    conn.execute(db.text("ALTER TABLE tickets ADD COLUMN escalation_reason TEXT NULL"))
+                print("Migration complete: escalation columns added successfully.")
+        except Exception as e:
+            print(f"Migration warning/error (might be clean db): {e}")
+
         # Check if admin exists
         admin = User.query.filter_by(email='admin@smartticket.ai').first()
         if not admin:

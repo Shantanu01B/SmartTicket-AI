@@ -45,6 +45,16 @@ def create_ticket():
         ai_solution=ai_insights.get('suggested_solution')
     )
     
+    # Calculate Escalation Risk
+    from app.services.escalation_predictor_service import calculate_escalation_score
+    try:
+        score, level, reason = calculate_escalation_score(new_ticket)
+        new_ticket.escalation_score = score
+        new_ticket.escalation_level = level
+        new_ticket.escalation_reason = reason
+    except Exception as e:
+        print(f"Error calculating escalation risk on create: {e}")
+    
     db.session.add(new_ticket)
     db.session.commit()
     
@@ -85,12 +95,36 @@ def update_ticket(ticket_id):
     ticket = Ticket.query.get_or_404(ticket_id)
     data = request.get_json()
     
+    status_changed_to_resolved = False
     if 'status' in data:
+        if data['status'] == 'Resolved' and ticket.status != 'Resolved':
+            status_changed_to_resolved = True
         ticket.status = data['status']
     if 'assigned_to' in data:
         ticket.assigned_to = data['assigned_to']
     if 'department_id' in data:
         ticket.department_id = data['department_id']
+    if 'urgency' in data:
+        ticket.urgency = data['urgency']
+        
+    # If status updated to Resolved, generate knowledge base article
+    if status_changed_to_resolved:
+        resolution_notes = data.get('resolution_notes', 'Resolved successfully.')
+        from app.services.knowledge_base_service import create_knowledge_article
+        try:
+            create_knowledge_article(ticket, resolution_notes)
+        except Exception as e:
+            print(f"Error generating knowledge article: {e}")
+
+    # Recompute escalation risk score on any update
+    from app.services.escalation_predictor_service import calculate_escalation_score
+    try:
+        score, level, reason = calculate_escalation_score(ticket)
+        ticket.escalation_score = score
+        ticket.escalation_level = level
+        ticket.escalation_reason = reason
+    except Exception as e:
+        print(f"Error recalculating escalation risk on update: {e}")
         
     db.session.commit()
     return jsonify(ticket.to_dict()), 200

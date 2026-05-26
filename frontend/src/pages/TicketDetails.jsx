@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
@@ -12,7 +12,9 @@ import {
     Building, 
     CheckCircle,
     AlertCircle,
-    Send
+    Send,
+    BookOpen,
+    ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
@@ -47,6 +49,11 @@ const TicketDetails = () => {
     const [agents, setAgents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    
+    // KB and Resolution States
+    const [relatedArticles, setRelatedArticles] = useState([]);
+    const [showResolutionModal, setShowResolutionModal] = useState(false);
+    const [resolutionNotes, setResolutionNotes] = useState('');
 
     const isAuthorized = currentUser?.role === 'admin' || currentUser?.role === 'support_agent';
 
@@ -56,17 +63,19 @@ const TicketDetails = () => {
 
     const fetchData = async () => {
         try {
-            const [ticketRes, commentsRes, deptsRes, usersRes] = await Promise.all([
+            const [ticketRes, commentsRes, deptsRes, usersRes, relatedRes] = await Promise.all([
                 api.get(`/tickets/${id}`),
                 api.get(`/tickets/${id}/comments`),
                 api.get('/departments/'),
-                isAuthorized ? api.get('/users/') : Promise.resolve({ data: [] })
+                isAuthorized ? api.get('/users/') : Promise.resolve({ data: [] }),
+                api.get(`/knowledge-base/related/${id}`).catch(() => ({ data: [] }))
             ]);
             
             setTicket(ticketRes.data);
             setComments(commentsRes.data);
             setDepartments(deptsRes.data);
             setAgents(usersRes.data.filter(u => u.role === 'support_agent' || u.role === 'admin'));
+            setRelatedArticles(relatedRes.data);
         } catch (error) {
             console.error('Failed to fetch ticket details', error);
             toast.error('Failed to load ticket details');
@@ -80,8 +89,47 @@ const TicketDetails = () => {
             const res = await api.put(`/tickets/${id}`, updates);
             setTicket(res.data);
             toast.success('Ticket updated successfully');
+            
+            // Re-fetch related articles to keep recommendation metrics accurate on update
+            const relatedRes = await api.get(`/knowledge-base/related/${id}`).catch(() => ({ data: [] }));
+            setRelatedArticles(relatedRes.data);
         } catch (error) {
             toast.error('Failed to update ticket');
+        }
+    };
+
+    const handleStatusChange = (newStatus) => {
+        if (newStatus === 'Resolved') {
+            setShowResolutionModal(true);
+        } else {
+            handleUpdateTicket({ status: newStatus });
+        }
+    };
+
+    const submitResolution = async () => {
+        if (!resolutionNotes.trim()) {
+            toast.error("Please enter resolution notes");
+            return;
+        }
+        try {
+            const res = await api.put(`/tickets/${id}`, { 
+                status: 'Resolved',
+                resolution_notes: resolutionNotes
+            });
+            setTicket(res.data);
+            setShowResolutionModal(false);
+            setResolutionNotes('');
+            toast.success('Ticket resolved. Smart Knowledge Base article generated!');
+            
+            // Refresh comments and related solutions
+            const [commentsRes, relatedRes] = await Promise.all([
+                api.get(`/tickets/${id}/comments`),
+                api.get(`/knowledge-base/related/${id}`).catch(() => ({ data: [] }))
+            ]);
+            setComments(commentsRes.data);
+            setRelatedArticles(relatedRes.data);
+        } catch (error) {
+            toast.error('Failed to resolve ticket');
         }
     };
 
@@ -161,6 +209,36 @@ const TicketDetails = () => {
                         </div>
                     </div>
 
+                    {/* Related Knowledge Base Articles */}
+                    {relatedArticles.length > 0 && (
+                        <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-4">
+                            <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
+                                <BookOpen className="h-5 w-5" />
+                                Smart Knowledge Base Recommendations
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {relatedArticles.map((article) => (
+                                    <div key={article.id} className="bg-secondary/35 border border-border/50 rounded-xl p-4 flex flex-col justify-between space-y-3">
+                                        <div className="space-y-1">
+                                            <h4 className="font-bold text-sm leading-snug line-clamp-1">
+                                                <Link to={`/knowledge-base/${article.id}`} target="_blank" rel="noopener noreferrer" className="hover:text-primary flex items-center gap-1.5 transition-colors">
+                                                    {article.title} <ExternalLink size={12} className="text-muted-foreground" />
+                                                </Link>
+                                            </h4>
+                                            <p className="text-xs text-muted-foreground/90 line-clamp-2 leading-relaxed">
+                                                {article.symptoms}
+                                            </p>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] text-muted-foreground font-semibold pt-2 border-t border-border/30">
+                                            <span>Match Score: <span className="text-green-500">{article.match_score || 0}%</span></span>
+                                            <span className="px-1.5 py-0.5 rounded bg-card">{article.category}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Comments Section */}
                     <div className="space-y-4">
                         <h3 className="text-xl font-bold flex items-center gap-2">
@@ -200,6 +278,49 @@ const TicketDetails = () => {
 
                 {/* Sidebar / Management */}
                 <div className="space-y-6">
+                    {/* Escalation Risk Analysis Card */}
+                    {ticket.escalation_level && (
+                        <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-4">
+                            <h3 className="font-bold text-lg flex items-center gap-2 text-destructive">
+                                <AlertCircle className="h-5 w-5" />
+                                Escalation Risk Analysis
+                            </h3>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-semibold text-muted-foreground">Risk Score</span>
+                                    <span className="text-lg font-black">{ticket.escalation_score}%</span>
+                                </div>
+                                <div className="w-full bg-secondary rounded-full h-2">
+                                    <div 
+                                        className={clsx(
+                                            "h-2 rounded-full transition-all duration-500",
+                                            ticket.escalation_level === 'High Risk' ? "bg-red-500" :
+                                            ticket.escalation_level === 'Medium Risk' ? "bg-orange-500" : "bg-blue-500"
+                                        )}
+                                        style={{ width: `${ticket.escalation_score}%` }}
+                                    ></div>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-semibold text-muted-foreground">Level</span>
+                                    <span className={clsx(
+                                        "text-xs font-bold px-2 py-0.5 rounded-full border",
+                                        ticket.escalation_level === 'High Risk' ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                        ticket.escalation_level === 'Medium Risk' ? "bg-orange-500/10 text-orange-500 border-orange-500/20" :
+                                        "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                    )}>
+                                        {ticket.escalation_level}
+                                    </span>
+                                </div>
+                                {ticket.escalation_reason && (
+                                    <div className="pt-2 text-xs leading-relaxed text-muted-foreground/90 space-y-1 bg-secondary/20 p-3 rounded-lg border border-border/40">
+                                        <p className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Risk Factors:</p>
+                                        <div className="whitespace-pre-wrap text-left">{ticket.escalation_reason}</div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-6 h-fit sticky top-24">
                         <h3 className="font-bold text-lg flex items-center gap-2">
                             <Shield className="h-5 w-5 text-primary" />
@@ -211,7 +332,7 @@ const TicketDetails = () => {
                                 <label className="text-sm font-medium text-muted-foreground">Status</label>
                                 <select 
                                     value={ticket.status}
-                                    onChange={(e) => handleUpdateTicket({ status: e.target.value })}
+                                    onChange={(e) => handleStatusChange(e.target.value)}
                                     className="w-full bg-secondary border border-border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
                                     disabled={!isAuthorized}
                                 >
@@ -286,6 +407,52 @@ const TicketDetails = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Resolution notes trigger modal */}
+            {showResolutionModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <motion.div 
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-card border border-border rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
+                    >
+                        <h3 className="font-bold text-lg text-primary flex items-center gap-2">
+                            <CheckCircle className="text-green-500 h-5 w-5" />
+                            Resolve Support Ticket
+                        </h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                            Provide clear, brief details on how this ticket was solved. Your inputs will auto-generate an enterprise knowledge base article to help others.
+                        </p>
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resolution Notes</label>
+                            <textarea
+                                value={resolutionNotes}
+                                onChange={(e) => setResolutionNotes(e.target.value)}
+                                placeholder="Describe the root cause and resolution steps taken..."
+                                className="w-full bg-secondary border border-border rounded-xl p-3 min-h-[120px] text-sm focus:ring-2 focus:ring-primary outline-none transition-all resize-none"
+                                required
+                            />
+                        </div>
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button
+                                onClick={() => {
+                                    setShowResolutionModal(false);
+                                    setResolutionNotes('');
+                                }}
+                                className="px-4 py-2 text-xs font-semibold rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={submitResolution}
+                                className="px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                            >
+                                Mark Resolved
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </motion.div>
     );
 };

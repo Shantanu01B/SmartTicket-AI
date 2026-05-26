@@ -13,19 +13,35 @@ const CreateTicket = () => {
     const [checkingDuplicates, setCheckingDuplicates] = useState(false);
     const navigate = useNavigate();
 
+    // Knowledge Base Recommendations states
+    const [recommendedSolution, setRecommendedSolution] = useState(null);
+    const [dismissRecommendation, setDismissRecommendation] = useState(false);
+
     useEffect(() => {
         const checkDuplicates = async () => {
             if (title.length < 5) {
                 setSimilarTickets([]);
+                setRecommendedSolution(null);
                 return;
             }
             
             setCheckingDuplicates(true);
             try {
-                const res = await api.post('/tickets/check-duplicates', { title, description });
-                setSimilarTickets(res.data);
+                const [dupRes, recRes] = await Promise.all([
+                    api.post('/tickets/check-duplicates', { title, description }),
+                    api.post('/knowledge-base/recommend', { title, description })
+                ]);
+                
+                setSimilarTickets(dupRes.data);
+                
+                if (recRes.data && recRes.data.length > 0) {
+                    setRecommendedSolution(recRes.data[0]); // Suggest the top matching article
+                    setDismissRecommendation(false);
+                } else {
+                    setRecommendedSolution(null);
+                }
             } catch (error) {
-                console.error('Failed to check duplicates', error);
+                console.error('Failed to run AI duplicate/solution scans', error);
             } finally {
                 setCheckingDuplicates(false);
             }
@@ -97,7 +113,7 @@ const CreateTicket = () => {
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: 'auto' }}
                                 exit={{ opacity: 0, height: 0 }}
-                                className="overflow-hidden"
+                                className="overflow-hidden mb-4"
                             >
                                 <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 space-y-3">
                                     <div className="flex items-center gap-2 text-amber-500 font-semibold text-sm">
@@ -120,6 +136,53 @@ const CreateTicket = () => {
                                     <p className="text-xs text-muted-foreground italic">
                                         An existing ticket might already solve your problem. Please review them to avoid duplicate work.
                                     </p>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Pre-submit Smart Knowledge Recommendation */}
+                    <AnimatePresence>
+                        {recommendedSolution && !dismissRecommendation && (
+                            <motion.div 
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="bg-primary/10 border border-primary/20 rounded-xl p-5 space-y-4 mb-4"
+                            >
+                                <div className="flex items-center gap-2 text-primary font-bold text-sm">
+                                    <span role="img" aria-label="book">📚</span> Similar Solution Found
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between items-baseline">
+                                        <h4 className="font-extrabold text-foreground">{recommendedSolution.title}</h4>
+                                        <span className="text-xs font-semibold text-green-500 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">
+                                            {recommendedSolution.match_score}% Match
+                                        </span>
+                                    </div>
+                                    <div className="space-y-1 text-left">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Suggested Resolution:</span>
+                                        <p className="text-xs text-muted-foreground/90 bg-secondary/35 p-3 rounded-lg leading-relaxed border border-border/50">
+                                            {recommendedSolution.resolution_steps}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 pt-1">
+                                    <Link 
+                                        to={`/knowledge-base/${recommendedSolution.id}`} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="text-xs font-bold bg-primary text-primary-foreground px-3.5 py-2 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1.5"
+                                    >
+                                        View Article <ExternalLink size={12} />
+                                    </Link>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setDismissRecommendation(true)}
+                                        className="text-xs font-semibold text-muted-foreground hover:text-foreground px-3.5 py-2 rounded-lg border border-border hover:bg-secondary transition-colors"
+                                    >
+                                        Continue Creating Ticket
+                                    </button>
                                 </div>
                             </motion.div>
                         )}

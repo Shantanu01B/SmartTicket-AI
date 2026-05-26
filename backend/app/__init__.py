@@ -19,6 +19,7 @@ def create_app(config_class=Config):
     from app.routes.analytics import analytics_bp
     from app.routes.ai_chat import ai_bp
     from app.routes.users import users_bp
+    from app.routes.knowledge_base import kb_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(tickets_bp, url_prefix='/api/tickets')
@@ -26,5 +27,6 @@ def create_app(config_class=Config):
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
     app.register_blueprint(ai_bp, url_prefix='/api/ai')
     app.register_blueprint(users_bp, url_prefix='/api/users')
+    app.register_blueprint(kb_bp, url_prefix='/api/knowledge-base')
 
     return app
